@@ -5,7 +5,7 @@ import {
   LockKeyhole, RefreshCw, Sparkles, Upload, UserRound, WandSparkles
 } from 'lucide-react';
 
-const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080' || 'https://three60womenafrica-service.onrender.com';
+const API = import.meta.env.VITE_API_BASE_URL || 'https://three60womenafrica-service.onrender.com';
 const steps = ['Your details', 'Your photo', 'Your future self'];
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 
@@ -559,9 +559,7 @@ function App() {
                 <p className="disclaimer">AI-generated visualisation · Not a prediction of your actual future</p>
               </div>
               <div className="result-image-wrap">
-                <div className="result-image-label"><Sparkles size={15} /> YOUR FUTURE SELF</div>
                 <img src={resultUrl} alt={`AI-generated future-self portrait for ${person.name}`} />
-                <div className="image-watermark">360 WOMAN AFRICA · 2026</div>
               </div>
             </motion.section>
           )}
