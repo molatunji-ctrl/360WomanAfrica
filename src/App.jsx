@@ -1,115 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, animate, motion, useMotionValue, useTransform } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Camera, Check, ChevronLeft, Download, Minus, Plus, RefreshCw, Share2, Upload,
+  ArrowLeft, ArrowRight, Camera, Check, Download, LoaderCircle,
+  LockKeyhole, RefreshCw, Sparkles, Upload, UserRound, WandSparkles
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_BASE_URL || 'https://three60womenafrica-service.onrender.com';
+const steps = ['Your details', 'Your photo', 'Your future self'];
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
-
-const CAREERS = [
-  'Company CEO', 'Surgeon', 'Founder', 'Senator', 'Architect',
-  'Film director', 'Judge', 'Engineer', 'Fashion designer', 'Professor',
-];
-const QUICK_PICKS = ['Company CEO', 'Founder', 'Doctor', 'Lawyer', 'Engineer', 'Politician', 'Creative director', 'Educator'];
-const STAGES = [
-  'Reading your photo',
-  'Imagining your next chapter',
-  'Building your office',
-  'Dressing the part',
-  'Setting the light',
-  'Framing your portrait',
-];
-const JOURNEY = [
-  { id: 'details', label: 'About you' },
-  { id: 'photo', label: 'Your photo' },
-  { id: 'result', label: 'Your future' },
-];
-
-/* ---------- The stage: the real frame, tilting, with live content in its window ---------- */
-
-function Stage({ children, over, onDropFile, dragging, setDragging, tiltOff }) {
-  const ref = useRef(null);
-  const [tilt, setTilt] = useState({ x: 0, y: 0, gx: 50, gy: 30 });
-  const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
-  function move(e) {
-    if (reduce || tiltOff) return;
-    const r = ref.current.getBoundingClientRect();
-    const px = (e.clientX - r.left) / r.width;
-    const py = (e.clientY - r.top) / r.height;
-    setTilt({ x: (0.5 - py) * 9, y: (px - 0.5) * 11, gx: px * 100, gy: py * 100 });
-  }
-  function leave() { setTilt({ x: 0, y: 0, gx: 50, gy: 30 }); }
-
-  return (
-    <div className="stage-wrap">
-      <div
-        ref={ref}
-        className={`card ${dragging ? 'is-dragging' : ''}`}
-        style={{
-          transform: `perspective(1100px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
-          '--gx': `${tilt.gx}%`, '--gy': `${tilt.gy}%`,
-        }}
-        onPointerMove={move}
-        onPointerLeave={leave}
-        onDragOver={(e) => { if (onDropFile) { e.preventDefault(); setDragging?.(true); } }}
-        onDragLeave={() => setDragging?.(false)}
-        onDrop={(e) => {
-          if (!onDropFile) return;
-          e.preventDefault();
-          setDragging?.(false);
-          onDropFile(e.dataTransfer.files?.[0]);
-        }}
-      >
-        <div className="window">{children}</div>
-        <img className="frame" src="/assets/360-future-frame.png" alt="" draggable="false" />
-        {over}
-        <div className="glare" aria-hidden="true" />
-      </div>
-    </div>
-  );
-}
-
-/* ---------- Rotating possibilities shown inside the empty window ---------- */
-
-function Possibilities({ greeting, future }) {
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setI((n) => (n + 1) % CAREERS.length), 2300);
-    return () => clearInterval(t);
-  }, []);
-  return (
-    <div className="poss">
-      <div className="poss-pattern" aria-hidden="true" />
-      <div className="poss-body">
-        {greeting ? <p className="poss-hello">{greeting}</p> : <p className="poss-hello">In ten years, you could be</p>}
-        {future ? (
-          <p className="poss-future">{future}</p>
-        ) : (
-          <AnimatePresence mode="wait">
-            <motion.p
-              key={CAREERS[i]}
-              className="poss-future"
-              initial={{ opacity: 0, y: 18, filter: 'blur(6px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, y: -18, filter: 'blur(6px)' }}
-              transition={{ duration: 0.35 }}
-            >
-              a {CAREERS[i]}
-            </motion.p>
-          </AnimatePresence>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ---------- App ---------- */
 
 function App() {
   const [page, setPage] = useState('welcome');
-  const [person, setPerson] = useState({ name: '', age: 30, occupation: '' });
+  const [person, setPerson] = useState({ name: '', age: '', occupation: '' });
   const [consent, setConsent] = useState(false);
   const [photo, setPhoto] = useState(null);
   const [preview, setPreview] = useState('');
@@ -118,32 +20,31 @@ function App() {
   const [error, setError] = useState('');
   const [cameraError, setCameraError] = useState('');
   const [cameraOn, setCameraOn] = useState(false);
-  const [countdown, setCountdown] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const [sliding, setSliding] = useState(false);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const cameraRequestRef = useRef(0);
   const fileRef = useRef(null);
-  const compareRef = useRef(null);
 
-  const reveal = useMotionValue(100);
-  const clip = useTransform(reveal, (v) => `inset(0 0 0 ${v}%)`);
-  const handleLeft = useTransform(reveal, (v) => `${v}%`);
+  const pageIndex = page === 'details' ? 0 : page === 'camera' ? 1 : 2;
 
-  const firstName = person.name.trim().split(' ')[0];
-  const detailsOk = Boolean(person.name.trim() && person.age >= 18 && person.age <= 110 && person.occupation.trim());
-  const journeyIndex = page === 'details' ? 0 : page === 'photo' || page === 'generating' ? 1 : 2;
+  const canContinue = Boolean(
+    person.name.trim() &&
+    Number(person.age) >= 18 &&
+    Number(person.age) <= 110 &&
+    person.occupation.trim()
+  );
 
-  useEffect(() => () => {
-    cameraRequestRef.current += 1;
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-  }, []);
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
 
-  useEffect(() => { if (page !== 'photo') stopCamera(); }, [page]);
+  useEffect(() => {
+    if (page !== 'camera') stopCamera();
+  }, [page]);
 
   useEffect(() => {
     if (cameraOn && videoRef.current && streamRef.current) {
@@ -152,32 +53,17 @@ function App() {
     }
   }, [cameraOn]);
 
-  useEffect(() => {
-    if (page !== 'generating') return undefined;
-    setElapsed(0);
-    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [page]);
-
-  useEffect(() => {
-    if (page !== 'result') return undefined;
-    reveal.set(100);
-    const controls = animate(reveal, 46, { delay: 0.5, duration: 1.8, ease: [0.22, 1, 0.36, 1] });
-    return () => controls.stop();
-  }, [page, resultUrl, reveal]);
-
   function stopCamera() {
-    cameraRequestRef.current += 1;
-    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setCameraOn(false);
-    setCountdown(0);
   }
 
-  function setField(key, value) { setPerson((p) => ({ ...p, [key]: value })); }
-  function bumpAge(d) { setField('age', Math.min(70, Math.max(18, Number(person.age) + d))); }
+  function updatePerson(key, value) {
+    setPerson((current) => ({ ...current, [key]: value }));
+  }
 
-  function clearPhoto() {
+  function chooseAnotherPhoto() {
     if (busy) return;
     stopCamera();
     setPhoto(null);
@@ -192,14 +78,16 @@ function App() {
     if (!file) return;
     setError('');
     setCameraError('');
-    if (!['image/jpeg', 'image/png'].includes(file.type)) {
-      setError('Choose a JPG or PNG image.');
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose an image file such as JPG or PNG.');
       return;
     }
     if (file.size > MAX_PHOTO_SIZE) {
-      setError('Choose an image under 10 MB.');
+      setError('Please choose an image smaller than 10 MB.');
       return;
     }
+
     if (preview) URL.revokeObjectURL(preview);
     setPhoto(file);
     setPreview(URL.createObjectURL(file));
@@ -209,72 +97,69 @@ function App() {
   async function startCamera() {
     setCameraError('');
     setError('');
+
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError('This browser can’t open the camera. Upload a photo instead.');
+      setCameraError('Camera access is not supported in this browser. Please upload a photo instead.');
       return;
     }
-    stopCamera();
-    const requestId = cameraRequestRef.current;
+
     try {
+      stopCamera();
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } },
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 960 },
+        },
         audio: false,
       });
-      if (requestId !== cameraRequestRef.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
       streamRef.current = stream;
       setCameraOn(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
     } catch {
-      if (requestId !== cameraRequestRef.current) return;
-      setCameraError('Camera access was blocked. Allow it in your browser, or upload a photo instead.');
+      setCameraError('Camera permission was not granted or the camera is unavailable. You can upload a photo instead.');
       setCameraOn(false);
     }
   }
 
-  async function snap() {
+  async function capturePhoto() {
     const video = videoRef.current;
     if (!video || !video.videoWidth) {
-      setCameraError('The camera is still starting. Try again in a moment.');
+      setCameraError('The camera is still starting. Please wait a moment and try again.');
       return;
     }
+
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-      setCameraError('Couldn’t capture the photo. Try again or upload one.');
+      setCameraError('Could not capture the photo. Please upload an image instead.');
       return;
     }
+
+    // Mirror the captured image to match the mirrored selfie-camera preview.
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0);
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-    if (blob) acceptPhoto(new File([blob], 'participant-photo.jpg', { type: 'image/jpeg' }));
-    else setCameraError('Couldn’t capture the photo. Try again or upload one.');
-  }
 
-  function captureWithCountdown() {
-    if (countdown) return;
-    let n = 3;
-    setCountdown(n);
-    const t = setInterval(() => {
-      n -= 1;
-      if (n <= 0) {
-        clearInterval(t);
-        setCountdown(0);
-        snap();
-      } else {
-        setCountdown(n);
-      }
-    }, 800);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+    if (blob) {
+      acceptPhoto(new File([blob], 'participant-photo.jpg', { type: 'image/jpeg' }));
+    } else {
+      setCameraError('Could not capture the photo. Please try again or upload an image.');
+    }
   }
 
   async function generate() {
-    if (busy) return;
-    if (!photo) { setError('Add a photo first.'); return; }
-    if (!consent) { setError('Tick the box to let us use your photo for this portrait.'); return; }
+    if (!photo || !consent || busy) {
+      if (!consent) setError('Please agree to the photo-processing consent before continuing.');
+      if (!photo) setError('Please capture or upload a photo first.');
+      return;
+    }
 
     setBusy(true);
     setError('');
@@ -285,14 +170,18 @@ function App() {
       const body = new FormData();
       body.append('image', photo, photo.name || 'participant-photo.jpg');
       body.append('name', person.name.trim());
-      body.append('age', String(person.age));
+      body.append('age', person.age);
       body.append('occupation', person.occupation.trim());
       body.append('consent', 'true');
 
-      const response = await fetch(`${API}/api/v1/generations`, { method: 'POST', body });
+      const response = await fetch(`${API}/api/v1/generations`, {
+        method: 'POST',
+        body,
+      });
+
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.message || 'We couldn’t start your portrait. Try again.');
+        throw new Error(data.message || 'We could not start image generation. Please try again.');
       }
 
       const created = await response.json();
@@ -301,47 +190,46 @@ function App() {
 
       for (let i = 0; i < 90; i += 1) {
         if (current.status === 'COMPLETED' || current.status === 'FAILED') break;
-        await new Promise((r) => setTimeout(r, 2000));
-        const s = await fetch(`${API}/api/v1/generations/${created.id}`);
-        if (!s.ok) throw new Error('We lost the connection while making your portrait. Try again.');
-        current = await s.json();
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const statusResponse = await fetch(`${API}/api/v1/generations/${created.id}`);
+
+        if (!statusResponse.ok) {
+          throw new Error('Could not check generation status. Please try again.');
+        }
+
+        current = await statusResponse.json();
         setJob(current);
       }
 
-      if (current.status === 'FAILED') throw new Error(current.message || 'Your portrait didn’t finish. Try again.');
-      if (current.status !== 'COMPLETED') throw new Error('This is taking longer than expected. Try again.');
+      if (current.status === 'FAILED') {
+        throw new Error(current.message || 'Image generation failed. Please try again.');
+      }
+      if (current.status !== 'COMPLETED') {
+        throw new Error('This is taking longer than expected. Please try again.');
+      }
 
-      const url = `${API}/api/v1/generations/${created.id}/image?t=${Date.now()}`;
-      // Preload so the reveal never starts on an empty frame.
-      await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = resolve;
-        img.onerror = () => reject(new Error('We couldn’t load your portrait. Try again.'));
-        img.src = url;
-      });
-      setResultUrl(url);
+      setResultUrl(`${API}/api/v1/generations/${created.id}/image?t=${Date.now()}`);
       setPage('result');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong.');
-      setPage('photo');
+      setPage('camera');
     } finally {
       setBusy(false);
     }
   }
 
-  async function fetchBlob() {
-    const r = await fetch(resultUrl);
-    if (!r.ok) throw new Error('fetch failed');
-    return r.blob();
-  }
+  async function downloadImage() {
+    if (!resultUrl) return;
 
-  async function download() {
     try {
-      const blob = await fetchBlob();
+      const response = await fetch(resultUrl);
+      if (!response.ok) throw new Error('Download failed.');
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${firstName || 'my'}-future-self.png`;
+      a.download = 'my-future-self.png';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -351,33 +239,15 @@ function App() {
     }
   }
 
-  async function share() {
-    try {
-      const blob = await fetchBlob();
-      const file = new File([blob], 'my-future-self.png', { type: 'image/png' });
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'My future self', text: 'Meet the woman I’m becoming. #360WomanAfrica' });
-      } else {
-        await download();
-      }
-    } catch { /* cancelled */ }
-  }
-
-  function again() {
-    // New photo, same details.
-    if (job?.id) fetch(`${API}/api/v1/generations/${job.id}`, { method: 'DELETE' }).catch(() => {});
-    setJob(null);
-    setResultUrl('');
-    clearPhoto();
-    setConsent(false);
-    setPage('photo');
-  }
-
-  function startOver() {
+  async function reset() {
     stopCamera();
-    if (job?.id) fetch(`${API}/api/v1/generations/${job.id}`, { method: 'DELETE' }).catch(() => {});
+
+    if (job?.id) {
+      fetch(`${API}/api/v1/generations/${job.id}`, { method: 'DELETE' }).catch(() => {});
+    }
     if (preview) URL.revokeObjectURL(preview);
-    setPerson({ name: '', age: 30, occupation: '' });
+
+    setPerson({ name: '', age: '', occupation: '' });
     setConsent(false);
     setPhoto(null);
     setPreview('');
@@ -389,317 +259,318 @@ function App() {
     setPage('welcome');
   }
 
-  /* ----- before/after slider ----- */
-  function setFromPointer(clientX) {
-    const r = compareRef.current?.getBoundingClientRect();
-    if (!r) return;
-    reveal.set(Math.min(97, Math.max(3, ((clientX - r.left) / r.width) * 100)));
-  }
-  function onSliderKey(e) {
-    const step = e.shiftKey ? 10 : 3;
-    if (e.key === 'ArrowLeft') { e.preventDefault(); reveal.set(Math.max(3, reveal.get() - step)); }
-    if (e.key === 'ArrowRight') { e.preventDefault(); reveal.set(Math.min(97, reveal.get() + step)); }
-  }
-
-  /* ----- window content per page ----- */
-  const futureLine = person.occupation.trim()
-    ? `${Number(person.age) + 10}, ${person.occupation.trim().replace(/^(a|an) /i, '')}`
-    : '';
-
-  let windowContent;
-  let stageOver = null;
-
-  if (page === 'welcome') {
-    windowContent = <Possibilities />;
-  } else if (page === 'details') {
-    windowContent = <Possibilities greeting={firstName ? `Hello, ${firstName}.` : ''} future={futureLine ? `Ten years on, you’re ${futureLine}.` : ''} />;
-  } else if (page === 'photo') {
-    if (preview) {
-      windowContent = <img className="fill" src={preview} alt="Your photo" />;
-    } else if (cameraOn) {
-      windowContent = (
-        <>
-          <video ref={videoRef} className="fill mirror" playsInline muted />
-          <div className="guide" aria-hidden="true" />
-          <AnimatePresence>
-            {countdown > 0 && (
-              <motion.div
-                key={countdown}
-                className="count"
-                initial={{ scale: 1.6, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ opacity: 0 }}
-              >
-                {countdown}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </>
-      );
-    } else {
-      windowContent = (
-        <div className="drop">
-          <div className="poss-pattern" aria-hidden="true" />
-          <div className="drop-body">
-            <Camera size={34} />
-            <p>Drop a photo here, or use the buttons.</p>
-          </div>
-        </div>
-      );
-    }
-  } else if (page === 'generating') {
-    windowContent = (
-      <>
-        <img className="fill gen-photo" src={preview} alt="" />
-        <div className="scan" aria-hidden="true" />
-      </>
-    );
-  } else {
-    windowContent = <img className="fill" src={preview} alt="Your photo today" />;
-  }
-
-  const resultStage = page === 'result' && resultUrl;
-
   return (
-    <div className="app">
-      <header className="top">
-        <button className="brand" onClick={startOver} aria-label="360 Woman Africa — start again">
-          <img src="/assets/360-banner.jpeg" alt="360 Woman Africa" />
+    <div className="app-shell">
+      <header className="topbar">
+        <button className="brand-lockup" onClick={reset} aria-label="360 Woman Africa home" type="button">
+          <img
+            src="/assets/360-banner.jpeg"
+            alt="360 Woman Africa — Leadership, Entrepreneurship, Mentorship, Advocacy"
+          />
         </button>
+        <div className="event-tag"><span className="live-dot" /> CONFERENCE 2026</div>
       </header>
 
-      <main className="main">
-        <section className="panel" aria-live="polite">
-          {page !== 'welcome' && (
-            <ol className="journey" aria-label="Progress">
-              {JOURNEY.map((s, i) => (
-                <li key={s.id} className={i === journeyIndex ? 'on' : i < journeyIndex ? 'done' : ''}>
-                  <span className="dot">{i < journeyIndex ? <Check size={12} strokeWidth={3} /> : i + 1}</span>
-                  {s.label}
-                </li>
-              ))}
-            </ol>
+      {page !== 'welcome' && page !== 'generating' && (
+        <div className="progress-wrap">
+          <div className="progress-label">
+            <span>YOUR JOURNEY</span><span>STEP {pageIndex + 1} OF 3</span>
+          </div>
+          <div className="progress-track">
+            <div className="progress-value" style={{ width: `${((pageIndex + 1) / 3) * 100}%` }} />
+          </div>
+          <div className="progress-steps">
+            {steps.map((step, index) => (
+              <span key={step} className={index <= pageIndex ? 'active' : ''}>{step}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <main>
+        <AnimatePresence mode="wait">
+          {page === 'welcome' && (
+            <motion.section
+              key="welcome"
+              className="welcome-page"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              <div className="hero-copy">
+                <div className="eyebrow"><Sparkles size={15} /> YOUR FUTURE. YOUR POSSIBILITIES.</div>
+                <h1>Meet the woman<br />you're <em>becoming.</em></h1>
+                <p className="hero-description">
+                  Your story is still unfolding. Step into a vision of your future self — confident,
+                  accomplished, and ready to shape what comes next.
+                </p>
+                <button className="primary-btn" onClick={() => setPage('details')} type="button">
+                  Begin your journey <ArrowRight size={19} />
+                </button>
+                <div className="trust-note"><LockKeyhole size={15} /> Your photo is processed to create your portrait.</div>
+              </div>
+              <div className="hero-art" aria-label="Illustration representing future possibilities">
+                <div className="art-circle circle-one" /><div className="art-circle circle-two" />
+                <div className="art-number">360<span>°</span></div>
+                <div className="art-copy">A future<br /><b>without limits.</b></div>
+                <div className="art-stamp">THE SHIFT<br /><span>2026</span></div>
+                <div className="art-star star-a">✳</div><div className="art-star star-b">✦</div>
+              </div>
+              <div className="welcome-bottom">
+                <span>360 WOMAN AFRICA</span>
+                <span>LEADERSHIP · ENTREPRENEURSHIP · MENTORSHIP · ADVOCACY</span>
+                <span>#360WomanAfricaconference2026</span>
+              </div>
+            </motion.section>
           )}
 
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={page}
-              className="step"
-              initial={{ opacity: 0, x: 24 }}
+          {page === 'details' && (
+            <motion.section
+              key="details"
+              className="content-page"
+              initial={{ opacity: 0, x: 18 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -24 }}
-              transition={{ duration: 0.28 }}
+              exit={{ opacity: 0, x: -12 }}
             >
-              {page === 'welcome' && (
-                <>
-                  <h1>Meet the woman you’re becoming.</h1>
-                  <p className="lede">Tell us where you’re headed, add a photo, and see yourself ten years from now.</p>
-                  <button className="btn gold big" onClick={() => setPage('details')}>Start</button>
-                  <p className="fine">Takes about a minute.</p>
-                </>
-              )}
+              <button className="back-btn" onClick={() => setPage('welcome')} type="button">
+                <ArrowLeft size={16} /> Back
+              </button>
+              <div className="section-heading">
+                <span className="section-kicker">01 / A LITTLE ABOUT YOU</span>
+                <h2>Every great future<br />starts with <em>you.</em></h2>
+                <p>Tell us a little about yourself so we can imagine a future portrait that reflects your journey.</p>
+              </div>
+              <form
+                className="details-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (canContinue) setPage('camera');
+                }}
+              >
+                <label>
+                  Full name <span>YOUR NAME</span>
+                  <input
+                    required
+                    maxLength={100}
+                    autoComplete="name"
+                    placeholder="e.g. Amara Okafor"
+                    value={person.name}
+                    onChange={(event) => updatePerson('name', event.target.value)}
+                  />
+                </label>
+                <label>
+                  Age <span>YEARS</span>
+                  <input
+                    required
+                    type="number"
+                    min={18}
+                    max={110}
+                    placeholder="Enter your age (18+)"
+                    value={person.age}
+                    onChange={(event) => updatePerson('age', event.target.value)}
+                  />
+                </label>
+                <label>
+                  Occupation <span>WHAT YOU DO</span>
+                  <input
+                    required
+                    maxLength={120}
+                    placeholder="e.g. Entrepreneur, Teacher, Software Engineer"
+                    value={person.occupation}
+                    onChange={(event) => updatePerson('occupation', event.target.value)}
+                  />
+                </label>
+                <div className="privacy-mini">
+                  <LockKeyhole size={18} />
+                  <p>Your name and details are sent to your backend to create the experience. Confirm your backend privacy practices before launch.</p>
+                </div>
+                <button className="primary-btn full-btn" type="submit" disabled={!canContinue}>
+                  Continue to your photo <ArrowRight size={19} />
+                </button>
+              </form>
+            </motion.section>
+          )}
 
-              {page === 'details' && (
-                <>
-                  <h2>First, a few things about you.</h2>
+          {page === 'camera' && (
+            <motion.section
+              key="camera"
+              className="content-page camera-page"
+              initial={{ opacity: 0, x: 18 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+            >
+              <button className="back-btn" onClick={() => { stopCamera(); setPage('details'); }} type="button">
+                <ArrowLeft size={16} /> Back
+              </button>
+              <div className="section-heading">
+                <span className="section-kicker">02 / YOUR PORTRAIT</span>
+                <h2>Let's meet <em>you.</em></h2>
+                <p>Choose a clear, front-facing photo with good lighting. Your face should be visible without filters or sunglasses.</p>
+              </div>
 
-                  <label className="field">
-                    <span>What should we call you?</span>
-                    <input
-                      value={person.name}
-                      onChange={(e) => setField('name', e.target.value)}
-                      placeholder="Your name"
-                      maxLength={100}
-                      autoComplete="given-name"
-                      autoFocus
-                    />
-                  </label>
-
-                  <div className="field">
-                    <span id="age-l">How old are you today?</span>
-                    <div className="age">
-                      <button type="button" className="round" onClick={() => bumpAge(-1)} aria-label="One year younger"><Minus size={18} /></button>
-                      <output className="age-n" aria-labelledby="age-l">{person.age}</output>
-                      <button type="button" className="round" onClick={() => bumpAge(1)} aria-label="One year older"><Plus size={18} /></button>
-                    </div>
-                    <input
-                      type="range" min="18" max="70" value={person.age}
-                      onChange={(e) => setField('age', Number(e.target.value))}
-                      aria-labelledby="age-l" className="range"
-                    />
-                  </div>
-
-                  <div className="field">
-                    <span id="occ-l">What will you be doing in ten years?</span>
-                    <div className="chips" role="group" aria-labelledby="occ-l">
-                      {QUICK_PICKS.map((c) => (
-                        <button
-                          key={c} type="button"
-                          className={`chip ${person.occupation === c ? 'sel' : ''}`}
-                          aria-pressed={person.occupation === c}
-                          onClick={() => setField('occupation', c)}
-                        >
-                          {c}
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      value={person.occupation}
-                      onChange={(e) => setField('occupation', e.target.value)}
-                      placeholder="Or type your own"
-                      maxLength={120}
-                      aria-labelledby="occ-l"
-                    />
-                  </div>
-
-                  <button className="btn gold big" disabled={!detailsOk} onClick={() => setPage('photo')}>
-                    Next: your photo
-                  </button>
-                </>
-              )}
-
-              {page === 'photo' && (
-                <>
-                  <button className="back" onClick={() => { clearPhoto(); setPage('details'); }}>
-                    <ChevronLeft size={16} /> Edit details
-                  </button>
-                  <h2>{preview ? `Looking good, ${firstName}.` : 'Now, a clear photo of your face.'}</h2>
-                  <p className="lede small">
-                    {preview
-                      ? 'Happy with it? Agree below and we’ll build your portrait.'
-                      : 'Face the light, no sunglasses. Your photo appears in the frame as you add it.'}
-                  </p>
-
-                  {!preview && (
-                    <div className="row">
-                      {!cameraOn ? (
-                        <button className="btn gold" onClick={startCamera}><Camera size={18} /> Use camera</button>
-                      ) : (
-                        <button className="btn gold" onClick={captureWithCountdown} disabled={countdown > 0}>
-                          <Camera size={18} /> {countdown ? `Hold still… ${countdown}` : 'Take photo'}
-                        </button>
-                      )}
-                      <button className="btn ghost" onClick={() => fileRef.current?.click()}><Upload size={18} /> Upload</button>
-                      <input ref={fileRef} type="file" accept="image/jpeg,image/png" hidden onChange={(e) => acceptPhoto(e.target.files?.[0])} />
+              <div className="camera-layout">
+                <div className="camera-frame">
+                  {preview ? (
+                    <img className="photo-preview" src={preview} alt="Your selected portrait" />
+                  ) : cameraOn ? (
+                    <video ref={videoRef} className="camera-video" autoPlay muted playsInline />
+                  ) : (
+                    <div className="camera-placeholder">
+                      <div className="camera-icon"><Camera size={34} /></div>
+                      <strong>Your portrait starts here</strong>
+                      <span>Use your camera or upload a photo</span>
                     </div>
                   )}
+                  {cameraOn && !preview && <div className="camera-guide" />}
+                </div>
 
-                  {preview && (
+                <div className="camera-controls">
+                  {preview ? (
                     <>
-                      <label className="consent">
-                        <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-                        <span>I agree to my photo being used to create my portrait at this event.</span>
-                      </label>
-                      <div className="row">
-                        <button className="btn gold big" onClick={generate} disabled={!consent || busy}>Show my future self</button>
-                        <button className="btn ghost" onClick={clearPhoto}><RefreshCw size={16} /> Retake</button>
-                      </div>
+                      <div className="selected-badge"><Check size={16} /> PHOTO SELECTED</div>
+                      <p>Happy with this photo? Continue to create your future-self portrait.</p>
+                      <button
+                        className="primary-btn full-btn"
+                        type="button"
+                        disabled={!consent || busy}
+                        onClick={generate}
+                      >
+                        <WandSparkles size={18} />
+                        {busy ? 'Generating your future self…' : 'Generate your future self'}
+                      </button>
+                      <button
+                        className="secondary-btn full-btn"
+                        type="button"
+                        onClick={chooseAnotherPhoto}
+                        disabled={busy}
+                      >
+                        Retake / choose another
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="primary-btn full-btn" type="button" onClick={startCamera}>
+                        <Camera size={18} /> Open camera
+                      </button>
+                      <button className="secondary-btn full-btn" type="button" onClick={() => fileRef.current?.click()}>
+                        <Upload size={18} /> Upload a photo
+                      </button>
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={(event) => {
+                          acceptPhoto(event.target.files?.[0]);
+                          event.target.value = '';
+                        }}
+                      />
                     </>
                   )}
 
-                  {(error || cameraError) && <p className="err" role="alert">{error || cameraError}</p>}
-                </>
-              )}
+                  {cameraOn && !preview && (
+                    <button className="capture-btn" type="button" onClick={capturePhoto}>
+                      <span /> Capture photo
+                    </button>
+                  )}
 
-              {page === 'generating' && (
-                <>
-                  <h2>Hold on, {firstName}. We’re finding her.</h2>
-                  <AnimatePresence mode="wait">
-                    <motion.p
-                      key={Math.floor(elapsed / 4) % STAGES.length}
-                      className="stage-msg"
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      transition={{ duration: 0.25 }}
-                    >
-                      {STAGES[Math.floor(elapsed / 4) % STAGES.length]}…
-                    </motion.p>
-                  </AnimatePresence>
-                  <div className="bar" role="progressbar" aria-label="Creating your portrait"><span /></div>
-                  <p className="fine">
-                    {elapsed < 45
-                      ? 'Usually under 30 seconds.'
-                      : 'Busy moment. Still working, please keep this page open.'}
-                  </p>
-                </>
-              )}
+                  {cameraError && <p className="inline-error" role="alert">{cameraError}</p>}
+                  {error && <p className="inline-error" role="alert">{error}</p>}
 
-              {page === 'result' && (
-                <>
-                  <h2>{firstName}, meet her.</h2>
-                  <p className="lede small">
-                    Drag across your portrait to move between today and ten years from now.
-                  </p>
-                  <div className="row">
-                    <button className="btn gold big" onClick={download}><Download size={18} /> Download</button>
-                    {typeof navigator !== 'undefined' && navigator.share && (
-                      <button className="btn ghost" onClick={share}><Share2 size={18} /> Share</button>
-                    )}
+                  <label className="consent-row">
+                    <input
+                      type="checkbox"
+                      checked={consent}
+                      onChange={(event) => {
+                        setConsent(event.target.checked);
+                        if (event.target.checked) setError('');
+                      }}
+                    />
+                    <span>
+                      I agree to have this photo processed by the AI service to create my future-self portrait.
+                      I understand this is an AI-generated visualisation, not a prediction.
+                    </span>
+                  </label>
+                  <div className="privacy-mini">
+                    <LockKeyhole size={17} />
+                    <p>Only continue if you agree. Review the event's privacy notice before public launch.</p>
                   </div>
-                  <div className="row tight">
-                    <button className="btn link" onClick={again}><RefreshCw size={15} /> Try another photo</button>
-                    <button className="btn link" onClick={startOver}>Start over</button>
-                  </div>
-                  <p className="fine">AI-generated visualisation. Not a prediction of your actual future.</p>
-                </>
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </section>
-
-        <section className="stage" aria-label="Your portrait">
-          {resultStage ? (
-            <div className="stage-wrap">
-              <div
-                ref={compareRef}
-                className={`card compare ${sliding ? 'is-sliding' : ''}`}
-                onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setSliding(true); setFromPointer(e.clientX); }}
-                onPointerMove={(e) => { if (sliding) setFromPointer(e.clientX); }}
-                onPointerUp={() => setSliding(false)}
-                onPointerCancel={() => setSliding(false)}
-              >
-                <div className="window"><img className="fill" src={preview} alt="" /></div>
-                <img className="frame" src="/assets/360-future-frame.png" alt="" draggable="false" />
-                <motion.img
-                  className="after"
-                  src={resultUrl}
-                  alt={`Your future self, ten years from now`}
-                  style={{ clipPath: clip }}
-                  draggable="false"
-                />
-                <span className="tag left">Today</span>
-                <span className="tag right">In 10 years</span>
-                <motion.div
-                  className="handle"
-                  style={{ left: handleLeft }}
-                  role="slider"
-                  tabIndex={0}
-                  aria-label="Compare today with ten years from now"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={Math.round(100 - reveal.get())}
-                  onKeyDown={onSliderKey}
-                >
-                  <span className="grip"><ChevronLeft size={16} /><ChevronLeft size={16} style={{ transform: 'rotate(180deg)' }} /></span>
-                </motion.div>
+                </div>
               </div>
-            </div>
-          ) : (
-            <Stage
-              over={stageOver}
-              onDropFile={page === 'photo' && !preview ? acceptPhoto : null}
-              dragging={dragging}
-              setDragging={setDragging}
-              tiltOff={page === 'generating'}
-            >
-              {windowContent}
-            </Stage>
+            </motion.section>
           )}
-        </section>
+
+          {page === 'generating' && (
+            <motion.section
+              key="generating"
+              className="generating-page"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <div className="loader-art">
+                <div className="loader-ring ring-a" />
+                <div className="loader-ring ring-b" />
+                <Sparkles className="loader-spark" size={42} />
+                <div className="loader-core">360</div>
+              </div>
+              <span className="section-kicker">YOUR NEXT CHAPTER</span>
+              <h2>Imagining what's <em>possible.</em></h2>
+              <p>We're creating a career-inspired vision of your future self. This can take a little while — please keep this page open.</p>
+              <div className="loading-bar"><span /></div>
+              <div className="loading-caption">
+                <LoaderCircle size={16} className="spin" />
+                {job?.status === 'PROCESSING' ? 'Creating your portrait…' : 'Preparing your portrait…'}
+              </div>
+              {error && (
+                <div className="error-panel" role="alert">
+                  <p>{error}</p>
+                  <button className="secondary-btn" type="button" onClick={() => setPage('camera')}>Back to photo</button>
+                </div>
+              )}
+            </motion.section>
+          )}
+
+          {page === 'result' && (
+            <motion.section
+              key="result"
+              className="result-page"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <div className="result-copy">
+                <span className="section-kicker">YOUR NEXT CHAPTER STARTS HERE</span>
+                <h2>Look at the woman<br />you're <em>becoming.</em></h2>
+                <p>This is one inspiring possibility. Your future is yours to shape.</p>
+                <div className="result-name">
+                  <UserRound size={18} />
+                  <div><strong>{person.name}</strong><span>{person.occupation}</span></div>
+                </div>
+                <button className="primary-btn full-btn" type="button" onClick={downloadImage}>
+                  <Download size={18} /> Download your portrait
+                </button>
+                <button className="secondary-btn full-btn" type="button" onClick={() => { chooseAnotherPhoto(); setPage('camera'); }}>
+                  Try another photo
+                </button>
+                <button className="text-btn" type="button" onClick={reset}>
+                  <RefreshCw size={16} /> Start a new experience
+                </button>
+                <p className="disclaimer">AI-generated visualisation · Not a prediction of your actual future</p>
+              </div>
+              <div className="result-image-wrap">
+                <img src={resultUrl} alt={`AI-generated future-self portrait for ${person.name}`} />
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
       </main>
 
-      <footer className="foot">360 Woman Africa Conference 2026 · Ten years of leadership</footer>
+      <footer className="footer">
+        <span>© 2026 360 Woman Africa</span>
+        <span>THE SHIFT: Designing Women’s Relevance in an AI-Intelligent World</span>
+        <span>Made for possibility <span className="footer-star">✦</span></span>
+      </footer>
     </div>
   );
 }
