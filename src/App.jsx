@@ -21,6 +21,15 @@ function App() {
   const [cameraError, setCameraError] = useState('');
   const [cameraOn, setCameraOn] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(4);
+  const [slideIndex, setSlideIndex] = useState(0);
+
+  const generationSlides = [
+    { title: 'Big dreams deserve a big vision.', body: 'Picture the impact you want to make.' },
+    { title: 'Your next chapter is taking shape.', body: 'We’re building a portrait inspired by your ambition.' },
+    { title: 'There is more than one way to lead.', body: 'Your future can be bold, creative, and uniquely yours.' },
+    { title: 'Keep imagining what is possible.', body: 'Your goals are the beginning of the story.' },
+  ];
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -41,6 +50,23 @@ function App() {
       if (preview) URL.revokeObjectURL(preview);
     };
   }, [preview]);
+
+  useEffect(() => {
+    if (page !== 'generating') return undefined;
+    const interval = window.setInterval(() => {
+      setSlideIndex((current) => (current + 1) % generationSlides.length);
+    }, 4200);
+    return () => window.clearInterval(interval);
+  }, [page]);
+
+  useEffect(() => {
+    if (page !== 'generating' || !busy) return undefined;
+    // This is a clearly labelled estimate unless the backend supplies a real `progress` value.
+    const interval = window.setInterval(() => {
+      setGenerationProgress((current) => Math.min(current + (current < 35 ? 3 : current < 70 ? 1 : 0.25), 92));
+    }, 1500);
+    return () => window.clearInterval(interval);
+  }, [page, busy]);
 
   useEffect(() => {
     if (page !== 'camera') stopCamera();
@@ -162,6 +188,8 @@ function App() {
     }
 
     setBusy(true);
+    setGenerationProgress(4);
+    setSlideIndex(0);
     setError('');
     setPage('generating');
     setResultUrl('');
@@ -186,6 +214,9 @@ function App() {
 
       const created = await response.json();
       setJob(created);
+      if (Number.isFinite(Number(created.progress))) {
+        setGenerationProgress(Math.max(4, Math.min(99, Number(created.progress))));
+      }
       let current = created;
 
       for (let i = 0; i < 90; i += 1) {
@@ -200,6 +231,11 @@ function App() {
 
         current = await statusResponse.json();
         setJob(current);
+        if (Number.isFinite(Number(current.progress))) {
+          setGenerationProgress(Math.max(4, Math.min(99, Number(current.progress))));
+        } else if (current.status === 'PROCESSING') {
+          setGenerationProgress((value) => Math.max(value, 18));
+        }
       }
 
       if (current.status === 'FAILED') {
@@ -209,6 +245,7 @@ function App() {
         throw new Error('This is taking longer than expected. Please try again.');
       }
 
+      setGenerationProgress(100);
       setResultUrl(`${API}/api/v1/generations/${created.id}/image?t=${Date.now()}`);
       setPage('result');
     } catch (e) {
@@ -256,6 +293,8 @@ function App() {
     setError('');
     setCameraError('');
     setBusy(false);
+    setGenerationProgress(4);
+    setSlideIndex(0);
     setPage('welcome');
   }
 
@@ -371,14 +410,27 @@ function App() {
                   />
                 </label>
                 <label>
-                  Occupation <span>WHAT YOU DO</span>
+                  What do you want to become? <span>YOUR FUTURE AMBITION</span>
                   <input
                     required
                     maxLength={120}
-                    placeholder="e.g. Entrepreneur, Teacher, Software Engineer"
+                    placeholder="e.g. Founder & CEO, Doctor, Tech Leader"
                     value={person.occupation}
                     onChange={(event) => updatePerson('occupation', event.target.value)}
                   />
+                  <div className="aspiration-label">PICK A POSSIBILITY OR WRITE YOUR OWN</div>
+                  <div className="aspiration-chips">
+                    {['Entrepreneur', 'CEO / Business Leader', 'Technology Leader', 'Doctor', 'Creative Director', 'Investor'].map((aspiration) => (
+                      <button
+                        className={`aspiration-chip ${person.occupation === aspiration ? 'selected' : ''}`}
+                        type="button"
+                        key={aspiration}
+                        onClick={() => updatePerson('occupation', aspiration)}
+                      >
+                        {aspiration}
+                      </button>
+                    ))}
+                  </div>
                 </label>
                 <div className="privacy-mini">
                   <LockKeyhole size={18} />
@@ -504,24 +556,78 @@ function App() {
             <motion.section
               key="generating"
               className="generating-page"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
             >
-              <div className="loader-art">
-                <div className="loader-ring ring-a" />
-                <div className="loader-ring ring-b" />
-                <Sparkles className="loader-spark" size={42} />
-                <div className="loader-core">360</div>
+              <div className="generation-orb" aria-hidden="true">
+                <div className="orb-ring orb-ring-one" />
+                <div className="orb-ring orb-ring-two" />
+                <div className="orb-glow" />
+                <div className="orb-core"><span>360</span><Sparkles size={25} /></div>
+                <span className="orbit-dot orbit-dot-one" />
+                <span className="orbit-dot orbit-dot-two" />
               </div>
-              <span className="section-kicker">YOUR NEXT CHAPTER</span>
-              <h2>Imagining what's <em>possible.</em></h2>
-              <p>We're creating a career-inspired vision of your future self. This can take a little while — please keep this page open.</p>
-              <div className="loading-bar"><span /></div>
-              <div className="loading-caption">
-                <LoaderCircle size={16} className="spin" />
-                {job?.status === 'PROCESSING' ? 'Creating your portrait…' : 'Preparing your portrait…'}
+
+              <span className="section-kicker">YOUR NEXT CHAPTER IS LOADING</span>
+              <h2>Imagine it. <em>Become it.</em></h2>
+              <p className="generation-intro">
+                We’re creating a visualisation inspired by your ambition to become <strong>{person.occupation}</strong>.
+              </p>
+
+              <div className="progress-card">
+                <div className="progress-topline">
+                  <span>{job?.status === 'PROCESSING' ? 'Creating your portrait' : 'Preparing your portrait'}</span>
+                  <strong>{Math.round(generationProgress)}%</strong>
+                </div>
+                <div
+                  className="generation-progress-track"
+                  role="progressbar"
+                  aria-label="Estimated image generation progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(generationProgress)}
+                >
+                  <motion.div
+                    className="generation-progress-fill"
+                    animate={{ width: `${generationProgress}%` }}
+                    transition={{ duration: 0.65, ease: 'easeOut' }}
+                  />
+                </div>
+                <div className="progress-footnote">
+                  <span className="progress-pulse" />
+                  {Number.isFinite(Number(job?.progress))
+                    ? 'Live progress reported by the generation service'
+                    : 'Estimated progress — the AI service has not supplied a live percentage'}
+                </div>
               </div>
+
+              <AnimatePresence mode="wait">
+                <motion.div
+                  className="inspiration-slide"
+                  key={slideIndex}
+                  initial={{ opacity: 0, y: 14, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.45 }}
+                >
+                  <div className="slide-icon"><Sparkles size={22} /></div>
+                  <span className="slide-eyebrow">A LITTLE INSPIRATION WHILE YOU WAIT</span>
+                  <h3>{generationSlides[slideIndex].title}</h3>
+                  <p>{generationSlides[slideIndex].body}</p>
+                  <div className="slide-dots" aria-label={`Inspiration ${slideIndex + 1} of ${generationSlides.length}`}>
+                    {generationSlides.map((slide, index) => (
+                      <span key={slide.title} className={index === slideIndex ? 'active' : ''} />
+                    ))}
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+
+              <div className="generation-status">
+                <span className="status-spinner"><LoaderCircle size={18} /></span>
+                <span>{job?.status === 'PROCESSING' ? 'Your future-self portrait is taking shape…' : 'Getting everything ready…'}</span>
+              </div>
+              <p className="generation-tip">Keep this page open. Your result will appear here automatically.</p>
               {error && (
                 <div className="error-panel" role="alert">
                   <p>{error}</p>
