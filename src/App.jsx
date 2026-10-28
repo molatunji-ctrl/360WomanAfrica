@@ -18,6 +18,10 @@ const SpeechRecognition =
     ? window.SpeechRecognition || window.webkitSpeechRecognition
     : null;
 
+// How long the mic keeps listening (change these to taste)
+const LISTEN_SILENCE_MS = 5000;  // stop after 5 seconds of silence
+const LISTEN_MAX_MS = 20000;     // never record longer than 20 seconds
+
 function cleanName(text) {
   return text
     .replace(/[.,!?]+$/g, '')
@@ -65,29 +69,68 @@ function useSpeechInput({ lang, onResult }) {
   const [error, setError] = useState('');
   const recRef = useRef(null);
   const onResultRef = useRef(onResult);
+  const transcriptRef = useRef('');
+  const silenceTimer = useRef(null);
+  const maxTimer = useRef(null);
 
   useEffect(() => {
     onResultRef.current = onResult;
   }, [onResult]);
 
-  useEffect(() => () => recRef.current?.abort(), []);
+  const clearTimers = useCallback(() => {
+    clearTimeout(silenceTimer.current);
+    clearTimeout(maxTimer.current);
+  }, []);
+
+  useEffect(() => () => {
+    clearTimers();
+    if (recRef.current) {
+      recRef.current.onend = null; // don't fire a result after leaving the page
+      recRef.current.abort();
+    }
+  }, [clearTimers]);
 
   const start = useCallback(() => {
     if (!SpeechRecognition) return;
     setError('');
+    transcriptRef.current = '';
 
     const rec = new SpeechRecognition();
     rec.lang = lang;
-    rec.interimResults = false;
+    rec.interimResults = true;  // lets us detect that the person is still speaking
     rec.maxAlternatives = 1;
-    rec.continuous = false;
+    rec.continuous = true;      // keep listening through pauses
 
-    rec.onstart = () => setListening(true);
+    const armSilenceTimer = () => {
+      clearTimeout(silenceTimer.current);
+      silenceTimer.current = setTimeout(() => rec.stop(), LISTEN_SILENCE_MS);
+    };
+
+    rec.onstart = () => {
+      setListening(true);
+      armSilenceTimer();
+      maxTimer.current = setTimeout(() => rec.stop(), LISTEN_MAX_MS);
+    };
+
+    rec.onresult = (e) => {
+      armSilenceTimer(); // person is still speaking, so restart the silence countdown
+      let text = '';
+      for (let i = 0; i < e.results.length; i += 1) {
+        text += e.results[i][0].transcript + ' ';
+      }
+      transcriptRef.current = text;
+    };
+
     rec.onend = () => {
+      clearTimers();
       setListening(false);
       recRef.current = null;
+      const text = transcriptRef.current.trim();
+      if (text) onResultRef.current?.(text);
     };
+
     rec.onerror = (e) => {
+      clearTimers();
       setListening(false);
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         setError('Microphone access was blocked. Please allow it, or type instead.');
@@ -97,14 +140,10 @@ function useSpeechInput({ lang, onResult }) {
         setError('Voice input did not work. Please try again or type.');
       }
     };
-    rec.onresult = (e) => {
-      const text = e.results[0][0].transcript.trim();
-      if (text) onResultRef.current?.(text);
-    };
 
     recRef.current = rec;
     rec.start();
-  }, [lang]);
+  }, [lang, clearTimers]);
 
   const stop = useCallback(() => recRef.current?.stop(), []);
 
@@ -132,7 +171,9 @@ function VoiceInput({ onVoice, lang = 'en-NG', micLabel = 'Speak', ...inputProps
         )}
       </div>
       <span className="sr-only" aria-live="polite">{listening ? 'Listening…' : ''}</span>
-      {listening && <small className="voice-listening">Listening… speak now</small>}
+      {listening && (
+        <small className="voice-listening">Listening… speak now, tap ■ when you're done</small>
+      )}
       {error && <small className="voice-error" role="alert">{error}</small>}
     </div>
   );
