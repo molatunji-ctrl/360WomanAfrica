@@ -1,13 +1,169 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft, ArrowRight, Camera, Check, Download, LoaderCircle,
-  LockKeyhole, RefreshCw, Sparkles, Upload, UserRound, WandSparkles
+  LockKeyhole, Mic, RefreshCw, Sparkles, Square, Upload, UserRound, WandSparkles
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_BASE_URL || 'https://three60womenafrica-service.onrender.com';
 const steps = ['Your details', 'Your photo', 'Your future self'];
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
+
+/* =====================================================================
+   VOICE INPUT (Web Speech API) — helpers, hook, component, styles
+   ===================================================================== */
+
+const SpeechRecognition =
+  typeof window !== 'undefined'
+    ? window.SpeechRecognition || window.webkitSpeechRecognition
+    : null;
+
+function cleanName(text) {
+  return text
+    .replace(/[.,!?]+$/g, '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+    .slice(0, 100);
+}
+
+function cleanOccupation(text) {
+  const t = text
+    .replace(/^(i want to be|i want to become|i will be|i am|i'm|i work as)\s+/i, '')
+    .replace(/^(an?|the)\s+/i, '')
+    .replace(/[.,!?]+$/g, '')
+    .trim();
+  return (t.charAt(0).toUpperCase() + t.slice(1)).slice(0, 120);
+}
+
+const NUMBER_ONES = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
+  eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13,
+  fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18,
+  nineteen: 19,
+};
+const NUMBER_TENS = {
+  twenty: 20, thirty: 30, forty: 40, fifty: 50,
+  sixty: 60, seventy: 70, eighty: 80, ninety: 90,
+};
+
+function parseAge(text) {
+  const digits = text.match(/\d{1,3}/);
+  if (digits) return digits[0];
+
+  let total = 0;
+  for (const word of text.toLowerCase().replace(/-/g, ' ').split(/\s+/)) {
+    if (NUMBER_TENS[word] !== undefined) total += NUMBER_TENS[word];
+    else if (NUMBER_ONES[word] !== undefined) total += NUMBER_ONES[word];
+  }
+  return total > 0 ? String(total) : '';
+}
+
+function useSpeechInput({ lang, onResult }) {
+  const [listening, setListening] = useState(false);
+  const [error, setError] = useState('');
+  const recRef = useRef(null);
+  const onResultRef = useRef(onResult);
+
+  useEffect(() => {
+    onResultRef.current = onResult;
+  }, [onResult]);
+
+  useEffect(() => () => recRef.current?.abort(), []);
+
+  const start = useCallback(() => {
+    if (!SpeechRecognition) return;
+    setError('');
+
+    const rec = new SpeechRecognition();
+    rec.lang = lang;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.continuous = false;
+
+    rec.onstart = () => setListening(true);
+    rec.onend = () => {
+      setListening(false);
+      recRef.current = null;
+    };
+    rec.onerror = (e) => {
+      setListening(false);
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        setError('Microphone access was blocked. Please allow it, or type instead.');
+      } else if (e.error === 'no-speech') {
+        setError("We didn't hear anything. Tap the mic and try again.");
+      } else if (e.error !== 'aborted') {
+        setError('Voice input did not work. Please try again or type.');
+      }
+    };
+    rec.onresult = (e) => {
+      const text = e.results[0][0].transcript.trim();
+      if (text) onResultRef.current?.(text);
+    };
+
+    recRef.current = rec;
+    rec.start();
+  }, [lang]);
+
+  const stop = useCallback(() => recRef.current?.stop(), []);
+
+  return { listening, error, start, stop };
+}
+
+function VoiceInput({ onVoice, lang = 'en-NG', micLabel = 'Speak', ...inputProps }) {
+  const { listening, error, start, stop } = useSpeechInput({ lang, onResult: onVoice });
+  const supported = Boolean(SpeechRecognition);
+
+  return (
+    <div className="voice-field">
+      <div className="voice-row">
+        <input {...inputProps} />
+        {supported && (
+          <button
+            type="button"
+            className={`mic-btn ${listening ? 'listening' : ''}`}
+            onClick={listening ? stop : start}
+            aria-label={listening ? 'Stop listening' : micLabel}
+            aria-pressed={listening}
+          >
+            {listening ? <Square size={18} /> : <Mic size={20} />}
+          </button>
+        )}
+      </div>
+      <span className="sr-only" aria-live="polite">{listening ? 'Listening…' : ''}</span>
+      {listening && <small className="voice-listening">Listening… speak now</small>}
+      {error && <small className="voice-error" role="alert">{error}</small>}
+    </div>
+  );
+}
+
+const voiceStyles = `
+.voice-row { display: flex; align-items: center; gap: 10px; }
+.voice-row input { flex: 1; min-width: 0; }
+.mic-btn {
+  flex: 0 0 auto; width: 48px; height: 48px; border-radius: 50%;
+  border: 2px solid #d4af37; background: #5a0816; color: #fff;
+  display: grid; place-items: center; cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.mic-btn:hover { transform: scale(1.06); }
+.mic-btn.listening { background: #b3122f; animation: micPulse 1s infinite; }
+@keyframes micPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.7); }
+  70%  { box-shadow: 0 0 0 14px rgba(212, 175, 55, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0); }
+}
+.voice-listening { display: block; margin-top: 6px; color: #5a0816; font-weight: 600; }
+.voice-error     { display: block; margin-top: 6px; color: #b3122f; }
+.voice-hint      { display: block; margin-top: 6px; opacity: 0.75; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+`;
+
+/* ===================================================================== */
 
 function App() {
   const [page, setPage] = useState('welcome');
@@ -300,6 +456,8 @@ function App() {
 
   return (
     <div className="app-shell">
+      <style>{voiceStyles}</style>
+
       <header className="topbar">
         <button className="brand-lockup" onClick={reset} aria-label="360 Woman Africa home" type="button">
           <img
@@ -388,18 +546,21 @@ function App() {
               >
                 <label>
                   Full name <span>YOUR NAME</span>
-                  <input
+                  <VoiceInput
                     required
                     maxLength={100}
                     autoComplete="name"
                     placeholder="e.g. Amara Okafor"
                     value={person.name}
                     onChange={(event) => updatePerson('name', event.target.value)}
+                    onVoice={(text) => updatePerson('name', cleanName(text))}
+                    micLabel="Speak your name"
                   />
+                  <small className="voice-hint">Check the spelling before you continue.</small>
                 </label>
                 <label>
                   Age <span>YEARS</span>
-                  <input
+                  <VoiceInput
                     required
                     type="number"
                     min={18}
@@ -407,16 +568,20 @@ function App() {
                     placeholder="Enter your age (18+)"
                     value={person.age}
                     onChange={(event) => updatePerson('age', event.target.value)}
+                    onVoice={(text) => updatePerson('age', parseAge(text))}
+                    micLabel="Speak your age"
                   />
                 </label>
                 <label>
                   What do you want to become? <span>YOUR FUTURE AMBITION</span>
-                  <input
+                  <VoiceInput
                     required
                     maxLength={120}
                     placeholder="e.g. Founder & CEO, Doctor, Tech Leader"
                     value={person.occupation}
                     onChange={(event) => updatePerson('occupation', event.target.value)}
+                    onVoice={(text) => updatePerson('occupation', cleanOccupation(text))}
+                    micLabel="Speak what you want to become"
                   />
                   <div className="aspiration-label">PICK A POSSIBILITY OR WRITE YOUR OWN</div>
                   <div className="aspiration-chips">
@@ -434,7 +599,7 @@ function App() {
                 </label>
                 <div className="privacy-mini">
                   <LockKeyhole size={18} />
-                  <p>Your name and details are sent to your backend to create the experience. Confirm your backend privacy practices before launch.</p>
+                  <p>Your name and details are sent to your backend to create the experience. Voice input is processed by your browser's speech service. Confirm your backend privacy practices before launch.</p>
                 </div>
                 <button className="primary-btn full-btn" type="submit" disabled={!canContinue}>
                   Continue to your photo <ArrowRight size={19} />
