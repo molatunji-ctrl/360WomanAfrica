@@ -5,7 +5,7 @@ import {
   LockKeyhole, Mic, RefreshCw, Sparkles, Square, Upload, UserRound, WandSparkles
 } from 'lucide-react';
 
-const API = import.meta.env.VITE_API_BASE_URL || 'https://three60womenafrica-service.onrender.com';
+// const API = import.meta.env.VITE_API_BASE_URL || 'https://three60womenafrica-service.onrender.com';
 const steps = ['Your details', 'Your photo', 'Your future self'];
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 
